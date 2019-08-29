@@ -40,7 +40,6 @@ from pubsub_logging.utils import compat_urlsafe_b64encode
 from pubsub_logging.utils import get_pubsub_client
 from pubsub_logging.utils import publish_body
 
-
 DEFAULT_BATCH_NUM = 1000
 DEFAULT_RETRY_COUNT = 5
 MAX_BATCH_SIZE = 1000
@@ -48,7 +47,8 @@ MAX_BATCH_SIZE = 1000
 
 class PubsubHandler(logging.handlers.BufferingHandler):
     """A logging handler to publish log messages to Cloud Pub/Sub."""
-    def __init__(self, topic, capacity=DEFAULT_BATCH_NUM,
+
+    def __init__(self, project_id, topic, capacity=DEFAULT_BATCH_NUM,
                  retry=DEFAULT_RETRY_COUNT, flush_level=logging.CRITICAL,
                  buf_hard_limit=-1, client=None, publish_body=publish_body):
         """The constructor of the handler.
@@ -69,6 +69,7 @@ class PubsubHandler(logging.handlers.BufferingHandler):
         """
         super(PubsubHandler, self).__init__(capacity)
         self._topic = topic
+        self._project_id = project_id
         self._retry = retry
         self._flush_level = flush_level
         self._buf_hard_limit = buf_hard_limit
@@ -77,7 +78,7 @@ class PubsubHandler(logging.handlers.BufferingHandler):
             self._client = client
         else:
             self._client = get_pubsub_client()
-        if not check_topic(self._client, topic, retry):
+        if not check_topic(self._client, project_id, topic):
             raise EnvironmentError(
                 'Failed to confirm the existence of the topic "%s".' % topic)
 
@@ -87,10 +88,9 @@ class PubsubHandler(logging.handlers.BufferingHandler):
         try:
             while self.buffer:
                 body = {'messages':
-                        [{'data': compat_urlsafe_b64encode(self.format(r))}
-                            for r in self.buffer[:MAX_BATCH_SIZE]]}
-                self._publish_body(self._client, body, self._topic,
-                                   self._retry)
+                            [{'data': compat_urlsafe_b64encode(self.format(r))}
+                             for r in self.buffer[:MAX_BATCH_SIZE]]}
+                self._publish_body(self._client, body, self._project_id, self._topic)
                 self.buffer = self.buffer[MAX_BATCH_SIZE:]
         except RecoverableError:
             # Cloud Pub/Sub API didn't receive the logs, most

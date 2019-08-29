@@ -15,23 +15,21 @@
 
 """Utilities for the Python logging handlers."""
 
-
 import base64
 import sys
+import json
 import threading
 import traceback
 
-from googleapiclient import discovery
-from googleapiclient import errors
-import httplib2
-from oauth2client.client import GoogleCredentials
+from google.cloud import pubsub_v1
 
 from pubsub_logging.errors import RecoverableError
-
 
 PUBSUB_SCOPES = ["https://www.googleapis.com/auth/pubsub"]
 
 clients = threading.local()
+
+published_client = pubsub_v1.PublisherClient()
 
 
 def compat_urlsafe_b64encode(v):
@@ -56,41 +54,38 @@ def get_pubsub_client(http=None, credentials=None):
     Returns:
       Cloud Pub/Sub client.
     """
-    if not credentials:
-        credentials = GoogleCredentials.get_application_default()
-    if credentials.create_scoped_required():
-        credentials = credentials.create_scoped(PUBSUB_SCOPES)
-    if not http:
-        http = httplib2.Http()
-    credentials.authorize(http=http)
-    return discovery.build('pubsub', 'v1beta2', http=http)
+
+    return published_client
 
 
-def check_topic(client, topic, retry=3):
+def check_topic(client, project_id, topic):
     """Checks the existance of a topic of the given name.
 
     Args:
       client: Cloud Pub/Sub client.
+      project_id: project id
       topic: topic name that we publish the records to.
       retry: number of retry upon intermittent failures, defaults to 3.
 
     Returns:
       True when it confirmed that the topic exists, and False otherwise.
     """
+
     try:
-        client.projects().topics().get(topic=topic).execute(num_retries=retry)
+        client.topic_path(project_id, topic)
         return True
     except Exception:
         traceback.print_exc(file=sys.stderr)
     return False
 
 
-def publish_body(client, body, topic, retry):
+def publish_body(client, body, project_id, topic):
     """Publishes the specified body to Cloud Pub/Sub.
 
     Args:
       client: Cloud Pub/Sub client.
       body: Post body for Pub/Sub publish call.
+      project_id: project id
       topic: topic name that we publish the records to.
       retry: number of retry upon intermittent failures.
 
@@ -101,10 +96,12 @@ def publish_body(client, body, topic, retry):
                        intermittent errors.
     """
     try:
-        client.projects().topics().publish(
-            topic=topic, body=body).execute(num_retries=retry)
-    except errors.HttpError as e:
-        if e.resp.status >= 400 and e.resp.status < 500:
+        topic_path = client.topic_path(project_id, topic)
+        client.publish(topic_path, data=json.dumps(body).encode())
+    except Exception as e:
+        err_str = str(e)
+
+        if '200' not in err_str:
             # Publishing failed for some non-recoverable reason. For
             # example, perhaps the service account doesn't have a
             # permission to publish to the specified topic, or the topic

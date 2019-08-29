@@ -26,6 +26,7 @@ background.
 
 import logging
 import multiprocessing as mp
+import os
 
 # For Python 2 and Python 3 compatibility.
 try:
@@ -39,7 +40,6 @@ from pubsub_logging.utils import check_topic
 from pubsub_logging.utils import compat_urlsafe_b64encode
 from pubsub_logging.utils import get_pubsub_client
 from pubsub_logging.utils import publish_body
-
 
 BATCH_SIZE = 1000
 DEFAULT_POOL_SIZE = 1
@@ -68,8 +68,8 @@ def send_loop(client, q, topic, retry, logger, format_func,
             continue
         try:
             body = {'messages':
-                    [{'data': compat_urlsafe_b64encode(format_func(r))}
-                        for r in logs]}
+                        [{'data': format_func(r)}
+                         for r in logs]}
             publish_body(client, body, topic, retry)
         except errors.RecoverableError as e:
             # Records the exception and puts the logs back to the deque
@@ -85,6 +85,7 @@ def send_loop(client, q, topic, retry, logger, format_func,
 
 class AsyncPubsubHandler(logging.Handler):
     """A logging handler to publish logs to Cloud Pub/Sub in background."""
+
     def __init__(self, topic, worker_num=DEFAULT_POOL_SIZE,
                  retry=DEFAULT_RETRY_COUNT, client=None,
                  publish_body=publish_body, stderr_logger=None):
