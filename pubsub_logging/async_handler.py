@@ -37,7 +37,6 @@ except ImportError:
 from pubsub_logging import errors
 
 from pubsub_logging.utils import check_topic
-from pubsub_logging.utils import compat_urlsafe_b64encode
 from pubsub_logging.utils import get_pubsub_client
 from pubsub_logging.utils import publish_body
 
@@ -70,7 +69,7 @@ def send_loop(client, q, topic, retry, logger, format_func,
             body = {'messages':
                         [{'data': format_func(r)}
                          for r in logs]}
-            publish_body(client, body, topic, retry)
+            publish_body(client, body, topic)
         except errors.RecoverableError as e:
             # Records the exception and puts the logs back to the deque
             # and prints the exception to stderr.
